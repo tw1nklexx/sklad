@@ -11,6 +11,90 @@ import { Button } from "@/components/ui/button"
 import { saveManualStockChanges } from "@/actions/manual-stock-actions"
 import type { ProductRow } from "@/lib/types"
 
+const CALC_VALID = /^[\d\s+\-*/().]+$/
+
+function safeEval(expr: string): number | null {
+  const trimmed = expr.trim()
+  if (!trimmed || !CALC_VALID.test(trimmed)) return null
+  try {
+    const fn = new Function(`"use strict"; return (${trimmed})`)
+    const result = fn()
+    return typeof result === "number" && Number.isFinite(result) ? result : null
+  } catch {
+    return null
+  }
+}
+
+function QuickCalc() {
+  const [expr, setExpr] = React.useState("")
+  const [result, setResult] = React.useState<string | null>(null)
+
+  const calculate = () => {
+    if (!expr.trim()) {
+      setResult(null)
+      return
+    }
+    const v = safeEval(expr)
+    setResult(v !== null ? String(v) : "Ошибка")
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-lg border border-border/50 bg-muted/20 px-3 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        Калькулятор
+      </p>
+      <input
+        type="text"
+        inputMode="numeric"
+        className="h-8 w-full rounded-md border border-border/50 bg-background px-2 font-mono text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+        placeholder="2*15 + 3*10"
+        value={expr}
+        onChange={(e) => {
+          setExpr(e.target.value)
+          const v = safeEval(e.target.value)
+          setResult(e.target.value.trim() ? (v !== null ? String(v) : null) : null)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") calculate()
+        }}
+      />
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          className="flex h-7 flex-1 items-center justify-center rounded-md border border-border/50 bg-background text-xs font-medium text-foreground transition-colors hover:bg-muted/50 active:bg-muted"
+          onClick={calculate}
+        >
+          =
+        </button>
+        <button
+          type="button"
+          className="flex h-7 flex-1 items-center justify-center rounded-md text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground active:bg-muted"
+          onClick={() => {
+            setExpr("")
+            setResult(null)
+          }}
+        >
+          Очистить
+        </button>
+      </div>
+      {result !== null && (
+        <div className="border-t border-border/40 pt-2">
+          <p className="text-[10px] text-muted-foreground">Результат:</p>
+          <p
+            className={`font-mono text-lg font-semibold tabular-nums leading-tight ${
+              result === "Ошибка"
+                ? "text-destructive"
+                : "text-foreground"
+            }`}
+          >
+            {result}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function WarehouseClient({
   products,
   supabaseReady,
@@ -123,53 +207,56 @@ export function WarehouseClient({
         />
       </div>
 
-      <aside className="flex w-full shrink-0 flex-col gap-2 lg:sticky lg:top-20 lg:w-52">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Действия
-        </p>
-        <AddStockModal
-          products={products}
-          supabaseReady={supabaseReady}
-          disabled={editMode}
-        />
-        {!editMode ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 w-full justify-center rounded-lg"
-            disabled={!supabaseReady || products.length === 0}
-            onClick={startEdit}
-          >
-            Редактировать вручную
-          </Button>
-        ) : (
-          <>
+      <aside className="flex w-full shrink-0 flex-col gap-4 lg:sticky lg:top-20 lg:w-52">
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Действия
+          </p>
+          <AddStockModal
+            products={products}
+            supabaseReady={supabaseReady}
+            disabled={editMode}
+          />
+          {!editMode ? (
             <Button
               type="button"
+              variant="outline"
               className="h-10 w-full justify-center rounded-lg"
-              disabled={!hasChanges || isPending}
-              onClick={onSave}
+              disabled={!supabaseReady || products.length === 0}
+              onClick={startEdit}
             >
-              {isPending ? (
-                <>
-                  <Loader2Icon className="size-4 animate-spin" />
-                  Сохранение…
-                </>
-              ) : (
-                "Сохранить изменения"
-              )}
+              Редактировать вручную
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-9 w-full justify-center rounded-lg text-muted-foreground"
-              disabled={isPending}
-              onClick={cancelEdit}
-            >
-              Отмена
-            </Button>
-          </>
-        )}
+          ) : (
+            <>
+              <Button
+                type="button"
+                className="h-10 w-full justify-center rounded-lg"
+                disabled={!hasChanges || isPending}
+                onClick={onSave}
+              >
+                {isPending ? (
+                  <>
+                    <Loader2Icon className="size-4 animate-spin" />
+                    Сохранение…
+                  </>
+                ) : (
+                  "Сохранить изменения"
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-9 w-full justify-center rounded-lg text-muted-foreground"
+                disabled={isPending}
+                onClick={cancelEdit}
+              >
+                Отмена
+              </Button>
+            </>
+          )}
+        </div>
+        <QuickCalc />
       </aside>
     </div>
   )
