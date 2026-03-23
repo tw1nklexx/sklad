@@ -1,5 +1,40 @@
 export const MAX_INPUT_LENGTH = 10_000
 
+/**
+ * Ровно допустимые для импорта остатков названия (как вводит сотрудник).
+ * Техническая строка «веник_» сюда не входит и в разборе не участвует.
+ */
+export const ALLOWED_IMPORT_PRODUCT_NAMES = [
+  "веник черный",
+  "веник синий",
+  "совок черный",
+  "совок серебряный",
+  "ершик бежевый",
+  "ершик серый",
+  "плейсматы серебряный круг",
+  "плейсматы серебро графика",
+  "плейсматы золото графика",
+  "плейсматы розовое золото лучи",
+  "плейсматы серебристые лучи",
+  "плейсматы золотистые лучи",
+] as const
+
+function collapseSpaces(s: string): string {
+  return s.replace(/\s+/g, " ").trim()
+}
+
+export function normalizeProductName(name: string): string {
+  return collapseSpaces(name.toLowerCase())
+}
+
+/** Нормализованное имя технической строки БД — не сопоставляется с текстом импорта. */
+export const IMPORT_EXCLUDED_PRODUCT_NAME_NORMALIZED =
+  normalizeProductName("веник_")
+
+const ALLOWED_IMPORT_PRODUCT_NAMES_NORMALIZED = new Set(
+  ALLOWED_IMPORT_PRODUCT_NAMES.map((n) => normalizeProductName(n))
+)
+
 /** Одна позиция после запятой в строке «N коробок - …» */
 export type ParsedContribution = {
   /** Номер строки во входном тексте (с учётом всех строк, 1-based) */
@@ -16,16 +51,9 @@ export type ParsedContribution = {
   total_quantity: number
 }
 
+/** Только ASCII «-» между блоком коробок и списком товаров. */
 const LINE_RE =
-  /^\s*(\d+)\s+(?:коробка|коробки|коробок)\s*[-–—]\s*(.+?)\s*$/i
-
-function collapseSpaces(s: string): string {
-  return s.replace(/\s+/g, " ").trim()
-}
-
-export function normalizeProductName(name: string): string {
-  return collapseSpaces(name.toLowerCase())
-}
+  /^\s*(\d+)\s+(?:коробка|коробки|коробок)\s*-\s*(.+)\s*$/i
 
 function parseProductSegment(
   segment: string,
@@ -37,27 +65,24 @@ function parseProductSegment(
 } {
   const seg = segment.trim()
   if (!seg) {
-    throw new Error(
-      `Строка ${lineNumber}: пустой фрагмент после запятой`
-    )
+    throw new Error(`Строка ${lineNumber}: после тире нет позиций`)
   }
   const m = seg.match(/^(.+?)\s+(\d+)\s*$/)
   if (!m) {
-    throw new Error(
-      `Строка ${lineNumber}: «${seg}» — укажите наименование и целое количество в конце (например: веник черный 20)`
-    )
+    throw new Error(`Строка ${lineNumber}: не указано количество товара`)
   }
   const rawName = m[1].trim()
   const perBox = Number.parseInt(m[2], 10)
   if (!Number.isFinite(perBox) || perBox <= 0) {
-    throw new Error(
-      `Строка ${lineNumber}: количество на коробку должно быть целым числом больше нуля`
-    )
+    throw new Error(`Строка ${lineNumber}: не указано количество товара`)
   }
   const product_name = collapseSpaces(rawName)
   const product_name_normalized = normalizeProductName(product_name)
   if (!product_name_normalized) {
-    throw new Error(`Строка ${lineNumber}: не удалось определить наименование`)
+    throw new Error(`Строка ${lineNumber}: неверное название товара`)
+  }
+  if (!ALLOWED_IMPORT_PRODUCT_NAMES_NORMALIZED.has(product_name_normalized)) {
+    throw new Error(`Строка ${lineNumber}: неверное название товара`)
   }
   return {
     product_name,
@@ -87,26 +112,28 @@ export function parseShipmentStrict(input: string): ParsedContribution[] {
 
     const lm = line.match(LINE_RE)
     if (!lm) {
-      throw new Error(
-        `Строка ${lineNumber}: ожидается формат «1 коробка - товар 20» или «2 коробки - товар 4, другой 5»`
-      )
+      throw new Error(`Строка ${lineNumber}: неверный формат строки`)
     }
 
     const boxCount = Number.parseInt(lm[1], 10)
     if (!Number.isFinite(boxCount) || boxCount <= 0) {
-      throw new Error(
-        `Строка ${lineNumber}: число коробок должно быть целым больше нуля`
-      )
+      throw new Error(`Строка ${lineNumber}: неверный формат строки`)
     }
 
     const right = lm[2].trim()
     if (!right) {
-      throw new Error(`Строка ${lineNumber}: после тире нет списка товаров`)
+      throw new Error(`Строка ${lineNumber}: после тире нет позиций`)
     }
 
-    const segments = right.split(",").map((s) => s.trim()).filter(Boolean)
+    const segmentParts = right.split(",").map((s) => s.trim())
+    for (const part of segmentParts) {
+      if (part === "") {
+        throw new Error(`Строка ${lineNumber}: после тире нет позиций`)
+      }
+    }
+    const segments = segmentParts.filter(Boolean)
     if (segments.length === 0) {
-      throw new Error(`Строка ${lineNumber}: после тире нет ни одной позиции`)
+      throw new Error(`Строка ${lineNumber}: после тире нет позиций`)
     }
 
     let segIdx = 0

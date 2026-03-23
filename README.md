@@ -63,6 +63,14 @@ supabase db push
 Для **даты отвоза**, **цвета товара**, **ручных правок** и обновлённых RPC выполните  
 `supabase/migrations/20250320150000_delivery_date_color_manual.sql`.
 
+Для колонки **PDF штрихкода** (`barcode_pdf_url`):  
+`supabase/migrations/20250320160000_barcode_pdf_url.sql`  
+(файлы кладите в `public/barcodes`, в БД — путь вида `/barcodes/SKU.pdf`).
+
+Если товары с `stock = NULL` (ошибка при списании):  
+`supabase/migrations/20250320170000_fix_null_stock.sql`  
+— обнуляет NULL, восстанавливает NOT NULL + DEFAULT, обновляет RPC с `COALESCE`.
+
 Повторный сид: `scripts/seed.sql`.
 
 ## Запуск

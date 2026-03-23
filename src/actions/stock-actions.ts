@@ -11,6 +11,7 @@ import {
   hasAnyNegative,
   hasAnyNotFound,
   snapshotLinesFromPreview,
+  stockImportNotFoundMessages,
 } from "@/lib/stock-preview"
 import type { ParsedSnapshot, ProductRow } from "@/lib/types"
 
@@ -48,7 +49,13 @@ async function fetchProductsFresh(): Promise<
     .select("id,sku,name,stock,image_url")
     .order("name", { ascending: true })
   if (error) throw new Error("Не удалось загрузить товары")
-  return (data ?? []) as Pick<ProductRow, "id" | "sku" | "name" | "stock" | "image_url">[]
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    id: String(r.id),
+    sku: String(r.sku ?? ""),
+    name: String(r.name ?? ""),
+    stock: Number(r.stock ?? 0),
+    image_url: r.image_url != null ? String(r.image_url) : null,
+  }))
 }
 
 export type ApplyStockResult =
@@ -86,7 +93,14 @@ export async function applyStockUpdate(
   const preview = buildPreviewRows(contributions, products)
 
   if (hasAnyNotFound(preview)) {
-    return { ok: false, message: "Есть неизвестные товары. Исправьте текст или каталог." }
+    const lines = stockImportNotFoundMessages(preview)
+    return {
+      ok: false,
+      message:
+        lines.length > 0
+          ? lines.join("\n")
+          : "Есть неизвестные товары. Исправьте текст или каталог.",
+    }
   }
 
   if (hasAnyNegative(preview) && !allowNegative) {

@@ -40,14 +40,14 @@ begin
 
   for rec in
     select *
-    from jsonb_to_recordset(p_deductions) as t(product_id uuid, quantity integer)
+    from jsonb_to_recordset(p_deductions) as t(product_id uuid, total_quantity integer)
   loop
-    if rec.quantity is null or rec.quantity <= 0 then
+    if rec.total_quantity is null or rec.total_quantity <= 0 then
       raise exception 'invalid quantity';
     end if;
 
     update public.products
-    set stock = stock - rec.quantity
+    set stock = stock - rec.total_quantity
     where id = rec.product_id
     returning stock into v_stock;
 

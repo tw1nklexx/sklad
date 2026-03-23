@@ -4,6 +4,8 @@ export type ProductRow = {
   name: string
   image_url: string | null
   color: string | null
+  /** Путь к PDF в public, например /barcodes/VENIK-BLACK.pdf */
+  barcode_pdf_url: string | null
   stock: number
   created_at: string
 }

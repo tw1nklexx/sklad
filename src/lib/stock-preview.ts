@@ -1,5 +1,8 @@
 import type { ParsedContribution } from "@/lib/parser"
-import { normalizeProductName } from "@/lib/parser"
+import {
+  IMPORT_EXCLUDED_PRODUCT_NAME_NORMALIZED,
+  normalizeProductName,
+} from "@/lib/parser"
 import type { ProductRow, SnapshotLine } from "@/lib/types"
 
 export type PreviewRow = SnapshotLine & {
@@ -7,21 +10,38 @@ export type PreviewRow = SnapshotLine & {
   segment_index: number
 }
 
-export function indexProductsByNormalizedName(
+/** Индекс для импорта текста: без технической строки «веник_». */
+export function indexProductsForStockImport(
   products: Pick<ProductRow, "id" | "sku" | "name" | "stock" | "image_url">[]
 ): Map<string, Pick<ProductRow, "id" | "sku" | "name" | "stock" | "image_url">> {
   const m = new Map<string, Pick<ProductRow, "id" | "sku" | "name" | "stock" | "image_url">>()
   for (const p of products) {
-    m.set(normalizeProductName(p.name), p)
+    const key = normalizeProductName(p.name)
+    if (key === IMPORT_EXCLUDED_PRODUCT_NAME_NORMALIZED) continue
+    if (!m.has(key)) m.set(key, p)
   }
   return m
+}
+
+/** Сообщения «Строка N: товар не найден» по строкам предпросмотра. */
+export function stockImportNotFoundMessages(rows: PreviewRow[]): string[] {
+  const byLine = new Map<number, string>()
+  for (const r of rows) {
+    if (r.status !== "not_found") continue
+    if (!byLine.has(r.line_number)) {
+      byLine.set(r.line_number, `Строка ${r.line_number}: товар не найден`)
+    }
+  }
+  return [...byLine.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, msg]) => msg)
 }
 
 export function buildPreviewRows(
   contributions: ParsedContribution[],
   products: Pick<ProductRow, "id" | "sku" | "name" | "stock" | "image_url">[]
 ): PreviewRow[] {
-  const idx = indexProductsByNormalizedName(products)
+  const idx = indexProductsForStockImport(products)
   const totals = new Map<string, number>()
   for (const c of contributions) {
     const t = totals.get(c.product_name_normalized) ?? 0
@@ -107,7 +127,7 @@ export function negativeProductSummaries(rows: PreviewRow[]): {
 
 export function buildDeductionsPayload(
   rows: PreviewRow[]
-): { product_id: string; quantity: number }[] {
+): { product_id: string; total_quantity: number }[] {
   const byId = new Map<string, number>()
   for (const r of rows) {
     if (r.status !== "found" || !r.product_id) continue
@@ -116,9 +136,9 @@ export function buildDeductionsPayload(
       (byId.get(r.product_id) ?? 0) + r.total_quantity
     )
   }
-  return [...byId.entries()].map(([product_id, quantity]) => ({
+  return [...byId.entries()].map(([product_id, total_quantity]) => ({
     product_id,
-    quantity,
+    total_quantity,
   }))
 }
 

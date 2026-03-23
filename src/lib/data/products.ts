@@ -14,6 +14,10 @@ function normalizeProductRow(row: Record<string, unknown>): ProductRow {
       row.color != null && String(row.color).trim() !== ""
         ? String(row.color)
         : null,
+    barcode_pdf_url:
+      row.barcode_pdf_url != null && String(row.barcode_pdf_url).trim() !== ""
+        ? String(row.barcode_pdf_url).trim()
+        : null,
     stock: Number(row.stock ?? 0),
     created_at: String(row.created_at ?? ""),
   }

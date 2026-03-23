@@ -28,6 +28,40 @@ import type { ProductRow } from "@/lib/types"
 
 type RowModel = ProductRow & { _displayStock: number }
 
+function StockInput({
+  productId,
+  initialValue,
+  onChange,
+}: {
+  productId: string
+  initialValue: number
+  onChange: (id: string, value: number) => void
+}) {
+  const [local, setLocal] = React.useState(() => String(initialValue))
+
+  return (
+    <Input
+      type="number"
+      inputMode="numeric"
+      className="h-8 w-[5.5rem] tabular-nums"
+      value={local}
+      onChange={(e) => {
+        const raw = e.target.value
+        setLocal(raw)
+        if (raw === "" || raw === "-") return
+        const n = Number.parseInt(raw, 10)
+        if (Number.isFinite(n)) onChange(productId, n)
+      }}
+      onBlur={() => {
+        if (local === "" || local === "-") {
+          setLocal("0")
+          onChange(productId, 0)
+        }
+      }}
+    />
+  )
+}
+
 export function WarehouseTable({
   products,
   editMode,
@@ -85,6 +119,29 @@ export function WarehouseTable({
         enableSorting: true,
       },
       {
+        id: "barcode",
+        header: "Штрихкод",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const href = row.original.barcode_pdf_url?.trim()
+          if (!href) {
+            return (
+              <span className="text-sm text-muted-foreground/80">Нет файла</span>
+            )
+          }
+          return (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            >
+              Открыть PDF
+            </a>
+          )
+        },
+      },
+      {
         accessorKey: "color",
         header: "Цвет",
         cell: ({ row }) => (
@@ -99,23 +156,12 @@ export function WarehouseTable({
         accessorFn: (r) => r._displayStock,
         header: "Остаток",
         cell: ({ row }) => {
-          const id = row.original.id
           if (editMode) {
             return (
-              <Input
-                type="number"
-                inputMode="numeric"
-                className="h-8 w-[5.5rem] tabular-nums"
-                value={draftStock[id] ?? row.original.stock}
-                onChange={(e) => {
-                  const t = e.target.value
-                  if (t === "") {
-                    onStockChange(id, 0)
-                    return
-                  }
-                  const n = Number.parseInt(t, 10)
-                  if (Number.isFinite(n)) onStockChange(id, n)
-                }}
+              <StockInput
+                productId={row.original.id}
+                initialValue={row.original.stock}
+                onChange={onStockChange}
               />
             )
           }
@@ -136,7 +182,7 @@ export function WarehouseTable({
         ),
       },
     ],
-    [editMode, draftStock, onStockChange]
+    [editMode, onStockChange]
   )
 
   const table = useReactTable({
