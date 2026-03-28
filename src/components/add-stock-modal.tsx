@@ -61,7 +61,7 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>
 
 const placeholder = `1 коробка - веник черный 20, веник синий 12
-2 коробки - совок черный 15
+2 коробки - совок большой 15
 1 коробка - плейсматы золотистые лучи 25`
 
 export function AddStockModal({
@@ -236,6 +236,10 @@ export function AddStockModal({
                     <li>• количество в конце</li>
                     <li>• название как в таблице</li>
                   </ul>
+                  <p className="mt-1.5 text-[9.5px] leading-snug text-muted-foreground/70">
+                    Подсказка: текст в скобках в конце строки можно указывать для склада — он не
+                    влияет на подсчёт.
+                  </p>
                 </div>
 
                 <div className="flex min-h-0 flex-1 flex-col gap-2">

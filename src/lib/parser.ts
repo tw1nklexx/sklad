@@ -7,14 +7,14 @@ export const MAX_INPUT_LENGTH = 10_000
 export const ALLOWED_IMPORT_PRODUCT_NAMES = [
   "веник черный",
   "веник синий",
-  "совок черный",
-  "совок серебряный",
+  "совок большой",
+  "совок маленький",
   "ершик бежевый",
   "ершик серый",
   "плейсматы серебряный круг",
-  "плейсматы серебро графика",
-  "плейсматы золото графика",
-  "плейсматы розовое золото лучи",
+  "плейсматы серебряная графика",
+  "плейсматы золотая графика",
+  "плейсматы розовое золото",
   "плейсматы серебристые лучи",
   "плейсматы золотистые лучи",
 ] as const
@@ -55,6 +55,29 @@ export type ParsedContribution = {
 const LINE_RE =
   /^\s*(\d+)\s+(?:коробка|коробки|коробок)\s*-\s*(.+)\s*$/i
 
+/**
+ * Убирает необязательную пометку кластера в конце строки: «… (текст)».
+ * Скобки сбалансированы с конца строки; не влияет на расчёт остатков.
+ */
+function stripTrailingClusterNote(line: string): string {
+  const t = line.trimEnd()
+  if (!t.endsWith(")")) return line.trim()
+
+  let depth = 0
+  for (let i = t.length - 1; i >= 0; i--) {
+    const c = t[i]
+    if (c === ")") depth++
+    else if (c === "(") {
+      depth--
+      if (depth === 0) {
+        return t.slice(0, i).trimEnd()
+      }
+    }
+  }
+
+  return line.trim()
+}
+
 function parseProductSegment(
   segment: string,
   lineNumber: number
@@ -93,6 +116,7 @@ function parseProductSegment(
 
 /**
  * Строгий разбор: только формат «N коробка(и/ок) - товар количество [, …]».
+ * В конце строки допускается « (…)» — пометка кластера, отбрасывается до разбора.
  * Пустые строки пропускаются. Итого по позиции = число коробок × количество на коробку.
  */
 export function parseShipmentStrict(input: string): ParsedContribution[] {
@@ -107,7 +131,7 @@ export function parseShipmentStrict(input: string): ParsedContribution[] {
 
   for (let i = 0; i < rawLines.length; i++) {
     const lineNumber = i + 1
-    const line = rawLines[i].trim()
+    const line = stripTrailingClusterNote(rawLines[i].trim())
     if (!line) continue
 
     const lm = line.match(LINE_RE)
