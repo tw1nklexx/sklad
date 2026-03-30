@@ -142,6 +142,40 @@ export function buildDeductionsPayload(
   }))
 }
 
+/** Сумма отгрузки по каждому артикула (все строки и коробки учтены). */
+export type ImportSkuTotal = {
+  product_id: string
+  sku: string
+  name: string
+  total_shipped: number
+}
+
+export function aggregateImportTotalsBySku(rows: PreviewRow[]): ImportSkuTotal[] {
+  const byId = new Map<
+    string,
+    { sku: string; name: string; total: number }
+  >()
+  for (const r of rows) {
+    if (r.status !== "found" || !r.product_id) continue
+    const sku = r.sku ?? ""
+    const name = r.matched_name ?? r.product_name
+    const prev = byId.get(r.product_id)
+    if (prev) {
+      prev.total += r.total_quantity
+    } else {
+      byId.set(r.product_id, { sku, name, total: r.total_quantity })
+    }
+  }
+  return [...byId.entries()]
+    .map(([product_id, v]) => ({
+      product_id,
+      sku: v.sku,
+      name: v.name,
+      total_shipped: v.total,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+}
+
 export function snapshotLinesFromPreview(rows: PreviewRow[]): SnapshotLine[] {
   return rows.map((row): SnapshotLine => {
       const {

@@ -33,6 +33,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { parseShipmentStrict } from "@/lib/parser"
 import {
+  aggregateImportTotalsBySku,
   buildPreviewRows,
   hasAnyNegative,
   hasAnyNotFound,
@@ -170,6 +171,11 @@ export function AddStockModal({
 
   const negativeItems = preview ? negativeProductSummaries(preview) : []
 
+  const importSkuTotals = React.useMemo(
+    () => (preview && preview.length > 0 ? aggregateImportTotalsBySku(preview) : []),
+    [preview]
+  )
+
   return (
     <>
       <Button
@@ -190,7 +196,7 @@ export function AddStockModal({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           showCloseButton
-          className="flex max-h-[min(92vh,900px)] w-[min(100%-1.5rem,1200px)] max-w-none flex-col gap-0 overflow-hidden p-0 shadow-xl ring-1 ring-black/[0.06] sm:max-w-none dark:ring-white/10"
+          className="flex max-h-[min(92vh,900px)] w-[min(100%-1.5rem,1200px)] max-w-none flex-col gap-0 overflow-y-auto overflow-x-hidden p-0 shadow-xl ring-1 ring-black/[0.06] sm:max-w-none dark:ring-white/10"
         >
           <DialogHeader className="shrink-0 border-b border-border/40 px-6 py-5">
             <DialogTitle className="text-lg font-semibold tracking-tight">
@@ -202,62 +208,64 @@ export function AddStockModal({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid max-h-[min(72vh,720px)] min-h-0 flex-1 grid-cols-1 divide-y divide-border/40 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)] lg:divide-x lg:divide-y-0">
-            {/* Левая колонка: скролл только у области ввода; кнопка закреплена снизу */}
-            <div className="flex min-h-0 flex-col overflow-hidden p-6">
-              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-0.5">
-                <div className="shrink-0 space-y-2">
-                  <Label htmlFor="delivery-date" className="text-muted-foreground">
-                    Дата отвоза <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="delivery-date"
-                    type="date"
-                    className="h-10 max-w-[11rem] rounded-lg border-border/50 bg-background shadow-none transition-colors focus-visible:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring/25"
-                    disabled={isPending}
-                    {...form.register("deliveryDate")}
-                  />
-                </div>
+          <div className="flex w-full flex-col lg:flex-row">
+            {/* Левая колонка */}
+            <div className="flex w-full min-w-0 flex-col border-b border-border/40 lg:flex-1 lg:border-b-0 lg:border-r">
+              <div className="px-6 pt-6">
+                <div className="flex flex-col gap-4 pb-4">
+                  <div className="shrink-0 space-y-2">
+                    <Label htmlFor="delivery-date" className="text-muted-foreground">
+                      Дата отвоза <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="delivery-date"
+                      type="date"
+                      className="h-10 max-w-[11rem] rounded-lg border-border/50 bg-background shadow-none transition-colors focus-visible:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring/25"
+                      disabled={isPending}
+                      {...form.register("deliveryDate")}
+                    />
+                  </div>
 
-                <div
-                  className="shrink-0 rounded-md border border-border/30 bg-muted/15 px-2.5 py-2 text-[10px] leading-snug text-muted-foreground/80"
-                  aria-label="Краткая справка по формату"
-                >
-                  <p>
-                    <span className="font-medium text-muted-foreground">Формат:</span>{" "}
-                    <span className="font-mono text-[9.5px] text-muted-foreground/75">
-                      N коробок - товар количество, товар количество
-                    </span>
-                  </p>
-                  <p className="mt-1.5 font-medium text-muted-foreground">Правила:</p>
-                  <ul className="mt-0.5 space-y-0.5 pl-0.5 text-[10px] text-muted-foreground/75">
-                    <li>• каждая строка начинается с количества коробок</li>
-                    <li>• товары через запятую</li>
-                    <li>• количество в конце</li>
-                    <li>• название как в таблице</li>
-                  </ul>
-                  <p className="mt-1.5 text-[9.5px] leading-snug text-muted-foreground/70">
-                    Подсказка: текст в скобках в конце строки можно указывать для склада — он не
-                    влияет на подсчёт.
-                  </p>
-                </div>
+                  <div
+                    className="shrink-0 rounded-md border border-border/30 bg-muted/15 px-2.5 py-2 text-[10px] leading-snug text-muted-foreground/80"
+                    aria-label="Краткая справка по формату"
+                  >
+                    <p>
+                      <span className="font-medium text-muted-foreground">Формат:</span>{" "}
+                      <span className="font-mono text-[9.5px] text-muted-foreground/75">
+                        N коробок - товар количество, товар количество
+                      </span>
+                    </p>
+                    <p className="mt-1.5 font-medium text-muted-foreground">Правила:</p>
+                    <ul className="mt-0.5 space-y-0.5 pl-0.5 text-[10px] text-muted-foreground/75">
+                      <li>• каждая строка начинается с количества коробок</li>
+                      <li>• товары через запятую</li>
+                      <li>• количество в конце</li>
+                      <li>• название как в таблице</li>
+                    </ul>
+                    <p className="mt-1.5 text-[9.5px] leading-snug text-muted-foreground/70">
+                      Подсказка: текст в скобках в конце строки можно указывать для склада — он не
+                      влияет на подсчёт.
+                    </p>
+                  </div>
 
-                <div className="flex min-h-0 flex-1 flex-col gap-2">
-                  <Label htmlFor="shipment-text" className="shrink-0 text-muted-foreground">
-                    Текст отгрузки
-                  </Label>
-                  <Textarea
-                    id="shipment-text"
-                    placeholder={placeholder}
-                    rows={8}
-                    className="min-h-[300px] w-full flex-1 resize-none rounded-lg border-border/50 bg-background px-3 py-2.5 font-mono text-[13px] leading-relaxed shadow-none transition-colors focus-visible:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring/25"
-                    disabled={isPending}
-                    {...form.register("rawText")}
-                  />
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="shipment-text" className="shrink-0 text-muted-foreground">
+                      Текст отгрузки
+                    </Label>
+                    <Textarea
+                      id="shipment-text"
+                      placeholder={placeholder}
+                      rows={10}
+                      className="h-[220px] min-h-[200px] max-h-[280px] w-full resize-y overflow-y-auto rounded-lg border-border/50 bg-background px-3 py-2.5 font-mono text-[13px] leading-relaxed shadow-none transition-colors focus-visible:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring/25"
+                      disabled={isPending}
+                      {...form.register("rawText")}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="shrink-0 space-y-3 border-t border-border/35 bg-background pt-4">
+              <div className="shrink-0 space-y-3 border-t border-border/40 bg-background px-6 py-3 pb-6 dark:bg-background">
                 <Button
                   type="button"
                   variant="secondary"
@@ -288,22 +296,23 @@ export function AddStockModal({
             </div>
 
             {/* Правая колонка: предпросмотр */}
-            <div className="flex min-h-0 flex-col gap-4 overflow-hidden p-6">
-              <p className="shrink-0 text-sm font-medium tracking-tight text-foreground">
+            <div className="flex w-full min-w-0 flex-col lg:flex-1">
+              <p className="shrink-0 px-6 pt-6 text-sm font-medium tracking-tight text-foreground">
                 Предпросмотр
               </p>
-              {!preview ? (
-                <div className="flex min-h-[200px] flex-1 items-center justify-center rounded-lg border border-dashed border-border/50 bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
-                  Нажмите «Обработать»
-                </div>
-              ) : preview.length === 0 ? (
-                <div className="flex min-h-[200px] flex-1 items-center justify-center rounded-lg border border-dashed border-border/50 bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
-                  Пустой результат
-                </div>
-              ) : (
-                <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border/40 bg-muted/15">
-                  <div className="min-w-[880px]">
-                    <Table>
+              <div className="px-6 pb-6">
+                {!preview ? (
+                  <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed border-border/50 bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
+                    Нажмите «Обработать»
+                  </div>
+                ) : preview.length === 0 ? (
+                  <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed border-border/50 bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
+                    Пустой результат
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-border/40 bg-muted/15">
+                    <div className="min-w-[880px]">
+                      <Table>
                       <TableHeader>
                         <TableRow className="border-border/45 hover:bg-transparent">
                           {[
@@ -389,40 +398,67 @@ export function AddStockModal({
                           </TableRow>
                         ))}
                       </TableBody>
-                    </Table>
+                      </Table>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {negative ? (
-                <div
-                  role="status"
-                  className="shrink-0 rounded-lg border border-amber-200/80 bg-amber-50/80 px-3.5 py-2.5 text-sm text-amber-950 dark:border-amber-900/35 dark:bg-amber-950/20 dark:text-amber-50"
-                >
-                  <p className="font-medium">Внимание: отрицательный остаток</p>
-                  <ul className="mt-1.5 space-y-0.5 text-xs leading-relaxed opacity-95">
-                    {negativeItems.map((r) => (
-                      <li key={r.product_id}>
-                        {r.label}: после списания будет {r.stock_after} (сейчас{" "}
-                        {r.stock_before})
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
+                {importSkuTotals.length > 0 ? (
+                  <div className="mt-4 rounded-lg border border-border/45 bg-muted/25 px-3 py-2.5">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Итого по артикулам (отгружено)
+                    </p>
+                    <ul className="mt-2 space-y-1.5 text-sm">
+                      {importSkuTotals.map((t) => (
+                        <li
+                          key={t.product_id}
+                          className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border/30 pb-1.5 last:border-0 last:pb-0"
+                        >
+                          <span className="font-mono text-[12px] text-muted-foreground">
+                            {t.sku}
+                          </span>
+                          <span className="min-w-0 flex-1 text-foreground">
+                            {t.name}
+                          </span>
+                          <span className="tabular-nums font-medium text-foreground">
+                            {t.total_shipped} шт.
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
 
-              {notFound ? (
-                <p
-                  className="shrink-0 text-sm leading-relaxed text-destructive"
-                  role="alert"
-                >
-                  Есть неизвестные товары — подтверждение недоступно.
-                </p>
-              ) : null}
+                {negative ? (
+                  <div
+                    role="status"
+                    className="mt-3 shrink-0 rounded-lg border border-amber-200/80 bg-amber-50/80 px-3.5 py-2.5 text-sm text-amber-950 dark:border-amber-900/35 dark:bg-amber-950/20 dark:text-amber-50"
+                  >
+                    <p className="font-medium">Внимание: отрицательный остаток</p>
+                    <ul className="mt-1.5 space-y-0.5 text-xs leading-relaxed opacity-95">
+                      {negativeItems.map((r) => (
+                        <li key={r.product_id}>
+                          {r.label}: после списания будет {r.stock_after} (сейчас{" "}
+                          {r.stock_before})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {notFound ? (
+                  <p
+                    className="mt-3 shrink-0 text-sm leading-relaxed text-destructive"
+                    role="alert"
+                  >
+                    Есть неизвестные товары — подтверждение недоступно.
+                  </p>
+                ) : null}
+              </div>
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 flex-col gap-4 border-t border-border/40 bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <DialogFooter className="shrink-0 flex-col gap-4 border-t border-border/40 bg-background px-6 py-4 sm:flex-row sm:items-center sm:justify-between dark:bg-background">
             <div className="flex items-start gap-2.5">
               <Checkbox
                 id="allow-negative-modal"

@@ -35,6 +35,33 @@ const ALLOWED_IMPORT_PRODUCT_NAMES_NORMALIZED = new Set(
   ALLOWED_IMPORT_PRODUCT_NAMES.map((n) => normalizeProductName(n))
 )
 
+/**
+ * Строгие синонимы: альтернативные формулировки → каноническое нормализованное имя из словаря.
+ * Только явные соответствия, без «размытого» поиска.
+ */
+const IMPORT_PRODUCT_NAME_SYNONYMS: Record<string, string> = {
+  [normalizeProductName("серебро графика")]: normalizeProductName(
+    "плейсматы серебряная графика"
+  ),
+  [normalizeProductName("серебряная графика")]: normalizeProductName(
+    "плейсматы серебряная графика"
+  ),
+  [normalizeProductName("плейсматы серебро графика")]: normalizeProductName(
+    "плейсматы серебряная графика"
+  ),
+  [normalizeProductName("золотая графика")]: normalizeProductName(
+    "плейсматы золотая графика"
+  ),
+}
+
+function resolveImportProductNameNormalized(rawNormalized: string): string {
+  if (ALLOWED_IMPORT_PRODUCT_NAMES_NORMALIZED.has(rawNormalized)) {
+    return rawNormalized
+  }
+  const mapped = IMPORT_PRODUCT_NAME_SYNONYMS[rawNormalized]
+  return mapped ?? rawNormalized
+}
+
 /** Одна позиция после запятой в строке «N коробок - …» */
 export type ParsedContribution = {
   /** Номер строки во входном тексте (с учётом всех строк, 1-based) */
@@ -100,7 +127,9 @@ function parseProductSegment(
     throw new Error(`Строка ${lineNumber}: не указано количество товара`)
   }
   const product_name = collapseSpaces(rawName)
-  const product_name_normalized = normalizeProductName(product_name)
+  const product_name_normalized = resolveImportProductNameNormalized(
+    normalizeProductName(product_name)
+  )
   if (!product_name_normalized) {
     throw new Error(`Строка ${lineNumber}: неверное название товара`)
   }
