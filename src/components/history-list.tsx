@@ -1,9 +1,12 @@
 "use client"
 
 import { ChevronDownIcon } from "lucide-react"
+import { useRouter } from "next/navigation"
 import * as React from "react"
 
+import { revertInventoryUpdate } from "@/actions/revert-inventory-update"
 import { Card } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { ProductThumb } from "@/components/product-thumb"
 import {
   Table,
@@ -20,6 +23,12 @@ import type {
   ProductRow,
   SnapshotLine,
 } from "@/lib/types"
+import {
+  aggregateManualTotalsBySku,
+  aggregateShipmentTotalsByProduct,
+  type ImportSkuTotal,
+  type ManualSkuTotal,
+} from "@/lib/stock-preview"
 import { cn } from "@/lib/utils"
 
 function formatDateTime(iso: string) {
@@ -70,6 +79,125 @@ function coerceSnapshot(raw: unknown): ParsedSnapshot {
 function isShipmentSnapshot(s: ParsedSnapshot): boolean {
   if (s.kind === "manual") return false
   return Array.isArray(s.lines) && s.lines.length > 0
+}
+
+function isLegacyShipmentLine(line: unknown): boolean {
+  const o = line as Record<string, unknown>
+  return (
+    typeof o.display_name === "string" &&
+    typeof o.quantity === "number" &&
+    typeof o.line_number !== "number"
+  )
+}
+
+/** Можно ли откатить остатки по этой записи (есть привязка к каталогу). */
+function canRevertSnapshot(snap: ParsedSnapshot): boolean {
+  if (snap.kind === "manual" && (snap.changes?.length ?? 0) > 0) {
+    return true
+  }
+  const lines = snap.lines
+  if (!lines?.length) return false
+  for (const raw of lines) {
+    if (isLegacyShipmentLine(raw)) return false
+  }
+  return lines.some((line) => {
+    const l = line as SnapshotLine
+    return l.status === "found" && Boolean(l.product_id || l.sku?.trim())
+  })
+}
+
+function formatDelta(delta: number) {
+  if (delta > 0) return `+${delta}`
+  return String(delta)
+}
+
+function ShipmentSkuTotalsBlock({ totals }: { totals: ImportSkuTotal[] }) {
+  if (totals.length === 0) return null
+  return (
+    <div className="mt-4 rounded-lg border border-border/45 bg-muted/25 px-3 py-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        Итого по артикулам (отгружено)
+      </p>
+      <ul className="mt-2 space-y-1.5 text-sm">
+        {totals.map((t) => (
+          <li
+            key={t.product_id}
+            className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border/30 pb-1.5 last:border-0 last:pb-0"
+          >
+            <span className="font-mono text-[12px] text-muted-foreground">{t.sku}</span>
+            <span className="min-w-0 flex-1 text-foreground">{t.name}</span>
+            <span className="tabular-nums font-medium text-foreground">
+              {t.total_shipped} шт.
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function ManualSkuTotalsBlock({ totals }: { totals: ManualSkuTotal[] }) {
+  if (totals.length === 0) return null
+  return (
+    <div className="mt-4 rounded-lg border border-border/45 bg-muted/25 px-3 py-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        Итого по артикулам (изменение остатка)
+      </p>
+      <ul className="mt-2 space-y-1.5 text-sm">
+        {totals.map((t) => (
+          <li
+            key={`${t.sku}-${t.name}`}
+            className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border/30 pb-1.5 last:border-0 last:pb-0"
+          >
+            <span className="font-mono text-[12px] text-muted-foreground">{t.sku}</span>
+            <span className="min-w-0 flex-1 text-foreground">{t.name}</span>
+            <span className="tabular-nums font-medium text-foreground">
+              {formatDelta(t.delta)} шт.
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function RevertHistoryButton({ updateId }: { updateId: string }) {
+  const router = useRouter()
+  const [pending, startTransition] = React.useTransition()
+  const [msg, setMsg] = React.useState<string | null>(null)
+
+  return (
+    <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="shrink-0"
+        disabled={pending}
+        onClick={() => {
+          if (
+            !confirm(
+              "Отменить это изменение? Остатки по затронутым артикулам вернутся к значениям до этой операции, запись из истории будет удалена."
+            )
+          ) {
+            return
+          }
+          setMsg(null)
+          startTransition(async () => {
+            const r = await revertInventoryUpdate({ updateId })
+            if (r.ok) {
+              router.refresh()
+            } else {
+              setMsg(r.message)
+            }
+          })
+        }}
+      >
+        {pending ? "Отмена…" : "Отменить изменение"}
+      </Button>
+      {msg ? <p className="text-sm text-destructive">{msg}</p> : null}
+    </div>
+  )
 }
 
 function ShipmentDetailTable({ lines, updateId }: { lines: SnapshotLine[]; updateId: string }) {
@@ -360,19 +488,32 @@ export function HistoryList({
                     </p>
                     <div className="mt-2">
                       {isManual && snap.changes ? (
-                        <ManualDetailTable
-                          changes={snap.changes}
-                          updateId={u.id}
-                          products={products}
-                        />
+                        <>
+                          <ManualDetailTable
+                            changes={snap.changes}
+                            updateId={u.id}
+                            products={products}
+                          />
+                          <ManualSkuTotalsBlock
+                            totals={aggregateManualTotalsBySku(snap.changes)}
+                          />
+                        </>
                       ) : shipment && snap.lines?.length ? (
-                        <ShipmentDetailTable lines={snap.lines} updateId={u.id} />
+                        <>
+                          <ShipmentDetailTable lines={snap.lines} updateId={u.id} />
+                          <ShipmentSkuTotalsBlock
+                            totals={aggregateShipmentTotalsByProduct(snap.lines)}
+                          />
+                        </>
                       ) : (
                         <p className="rounded-xl border border-dashed border-border/60 bg-background py-10 text-center text-sm text-muted-foreground">
                           Нет структурированных данных
                         </p>
                       )}
                     </div>
+                    {canRevertSnapshot(snap) ? (
+                      <RevertHistoryButton updateId={u.id} />
+                    ) : null}
                     {snap.allow_negative ? (
                       <p className="mt-2 text-xs text-muted-foreground">
                         С отрицательным остатком (по тексту отгрузки).

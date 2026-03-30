@@ -3,7 +3,12 @@ import {
   IMPORT_EXCLUDED_PRODUCT_NAME_NORMALIZED,
   normalizeProductName,
 } from "@/lib/parser"
-import type { ProductRow, SnapshotLine } from "@/lib/types"
+import type {
+  ManualChangeRow,
+  PreviewLineStatus,
+  ProductRow,
+  SnapshotLine,
+} from "@/lib/types"
 
 export type PreviewRow = SnapshotLine & {
   normalized_key: string
@@ -150,12 +155,24 @@ export type ImportSkuTotal = {
   total_shipped: number
 }
 
-export function aggregateImportTotalsBySku(rows: PreviewRow[]): ImportSkuTotal[] {
+type ShipmentLineForTotal = {
+  status: PreviewLineStatus
+  product_id?: string
+  sku?: string
+  total_quantity: number
+  matched_name?: string
+  product_name: string
+}
+
+/** Сумма отгрузки по артикулам из строк снимка (история или предпросмотр). */
+export function aggregateShipmentTotalsByProduct(
+  lines: ShipmentLineForTotal[]
+): ImportSkuTotal[] {
   const byId = new Map<
     string,
     { sku: string; name: string; total: number }
   >()
-  for (const r of rows) {
+  for (const r of lines) {
     if (r.status !== "found" || !r.product_id) continue
     const sku = r.sku ?? ""
     const name = r.matched_name ?? r.product_name
@@ -174,6 +191,35 @@ export function aggregateImportTotalsBySku(rows: PreviewRow[]): ImportSkuTotal[]
       total_shipped: v.total,
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+}
+
+export function aggregateImportTotalsBySku(rows: PreviewRow[]): ImportSkuTotal[] {
+  return aggregateShipmentTotalsByProduct(rows)
+}
+
+/** Итог изменения остатка по артикулам (ручное сохранение). */
+export type ManualSkuTotal = {
+  sku: string
+  name: string
+  /** became − was (положительно — прибавили на склад). */
+  delta: number
+}
+
+export function aggregateManualTotalsBySku(
+  changes: ManualChangeRow[]
+): ManualSkuTotal[] {
+  const byKey = new Map<string, ManualSkuTotal>()
+  for (const c of changes) {
+    const key = c.product_id ?? c.sku.trim().toLowerCase()
+    const delta = c.became - c.was
+    const prev = byKey.get(key)
+    if (prev) {
+      prev.delta += delta
+    } else {
+      byKey.set(key, { sku: c.sku, name: c.name, delta })
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, "ru"))
 }
 
 export function snapshotLinesFromPreview(rows: PreviewRow[]): SnapshotLine[] {
